@@ -30,9 +30,9 @@ def batch_norm(x, n_out, av_dims, is_training, scope='bn'):
 
     # phase_train = tf.Print(phase_train,[phase_train])
     def mean_var_with_update():
-    with torch.no_grad():
-        ema_apply_op = torch.cat([batch_mean.view(-1), batch_var.view(-1)], dim=0)
-        ema.apply(ema_apply_op)
+        with torch.no_grad():
+            ema_apply_op = torch.cat([batch_mean.view(-1), batch_var.view(-1)], dim=0)
+            ema.apply(ema_apply_op)
     return batch_mean.clone().detach(), batch_var.clone().detach()
 
     mean, var = torch.jit.trace(mean_var_with_update, ())
