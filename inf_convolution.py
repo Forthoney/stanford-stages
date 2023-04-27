@@ -16,6 +16,7 @@ def batch_norm(x, n_out, av_dims, is_training, scope='bn'):
     with torch.no_grad():
         beta = torch.zeros(n_out, requires_grad=True)
         gamma = torch.ones(n_out, requires_grad=True)
+        ema = torch.optim.ExponentialMovingAverage(decay=0.999)
         running_mean = torch.zeros(n_out)
         running_var = torch.ones(n_out)
     if is_training:
@@ -29,15 +30,18 @@ def batch_norm(x, n_out, av_dims, is_training, scope='bn'):
 
     # phase_train = tf.Print(phase_train,[phase_train])
     def mean_var_with_update():
-        ema_apply_op = ema.apply([batch_mean, batch_var])
-        with tf.control_dependencies([ema_apply_op]):
-            return tf.identity(batch_mean), tf.identity(batch_var)
+    with torch.no_grad():
+        ema_apply_op = torch.cat([batch_mean.view(-1), batch_var.view(-1)], dim=0)
+        ema.apply(ema_apply_op)
+    return batch_mean.clone().detach(), batch_var.clone().detach()
 
-    mean, var = tf.cond(phase_train,
-                        mean_var_with_update,
-                        lambda: (ema.average(batch_mean), ema.average(batch_var)))
-    # meanV = tf.Print(mean,[mean])
-    normed = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-3)
+    mean, var = torch.jit.trace(mean_var_with_update, ())
+    mean, var = torch.jit.freeze((mean, var))
+
+    if phase_train:
+        normed = nn.functional.batch_norm(x, mean, var, beta, gamma, eps=1e-3, momentum=0.1, training=True)
+    else:
+       normed = nn.functional.batch_norm(x, mean, var, beta, gamma, eps=1e-3, momentum=0.1, training=False)
     return normed
 
 
