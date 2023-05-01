@@ -16,8 +16,10 @@ warnings.simplefilter('ignore', FutureWarning)  # warnings.filterwarnings("ignor
 # for getting predictions
 import scipy.io as sio
 
-import tensorflow as tf
-import gpflow as gpf
+# import tensorflow as tf
+# import gpflow as gpf
+import torch
+
 import random
 
 # For hypnodensity plotting ...
@@ -237,11 +239,15 @@ class NarcoApp(object):
 
             for k in range(num_folds):
                 #         print('{} | Loading and predicting using {}'.format(datetime.now(), os.path.join(gpmodels_base_path, gpmodel, gpmodel + '_fold{:02}.gpm'.format(k+1))))
-                with tf.Graph().as_default() as graph:
-                    with tf.Session():
-                        m = gpf.saver.Saver().load(
-                            os.path.join(gpmodels_base_path, gpmodel, gpmodel + '_fold{:02}.gpm'.format(k + 1)))
-                        mean_pred[:, idx, k, np.newaxis], var_pred[:, idx, k, np.newaxis] = m.predict_y(X)
+                with torch.no_grad():
+                    model = torch.load(os.path.join(gpmodels_base_path, gpmodel, gpmodel + '_fold{:02}.gpm'.format(k + 1)))
+                    model.eval()
+                    mean_pred[:, idx, k:k+1], var_pred[:, idx, k:k+1] = model(X)
+                # with tf.Graph().as_default() as graph:
+                #     with tf.Session():
+                #         m = gpf.saver.Saver().load(
+                #             os.path.join(gpmodels_base_path, gpmodel, gpmodel + '_fold{:02}.gpm'.format(k + 1)))
+                #         mean_pred[:, idx, k, np.newaxis], var_pred[:, idx, k, np.newaxis] = m.predict_y(X)
 
         self.narcolepsy_probability = np.sum(np.multiply(np.mean(mean_pred, axis=2), scales), axis=1) / np.sum(scales)
         return self.narcolepsy_probability
