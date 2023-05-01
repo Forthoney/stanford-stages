@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-import inf_convolution as sc_conv
+import convolution as sc_conv
 
 # TODO: implement weight decay
 

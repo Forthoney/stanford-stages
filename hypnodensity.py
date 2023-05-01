@@ -11,6 +11,7 @@ import itertools  # for extracting feature combinations
 import os  # for opening os files for pickle.
 import pickle
 from pathlib import Path
+import torch
 
 import numpy as np
 import pyedflib
@@ -20,10 +21,9 @@ import scipy.signal as signal  # for edf channel sampling and filtering
 import skimage
 from scipy.fftpack import fft, fftshift, ifft, irfft
 
-from inf_config import ACConfig
-from inf_network import SCModel
-from inf_tools import myprint
-
+from config import ACConfig
+from network import SCModel
+from tools import myprint
 
 def softmax(x):
     e_x = np.exp(x)
@@ -465,84 +465,28 @@ class Hypnodensity(object):
         return dat, Nextra, prediction, num_batches
 
     def run(dat, ac_config):
-        with tf.Graph().as_default() as g:
-            m = SCModel(ac_config)
-            s = tf.train.Saver(tf.global_variables())
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-            # print("AC config hypnodensity path",ac_config.hypnodensity_model_dir)
+        m = SCModel(ac_config).to(device)
+        s = torch.load(ac_config.hypnodensity_model_dir)
 
-            with tf.Session(
-                config=tf.ConfigProto(log_device_placement=False)
-            ) as session:
-                ckpt = tf.train.get_checkpoint_state(ac_config.hypnodensity_model_dir)
+        state = torch.zeros(1, ac_config.num_hidden * 2).to(device)
 
-                s.restore(session, ckpt.model_checkpoint_path)
+        dat, Nextra, prediction, num_batches = Hypnodensity.segment(dat, ac_config)
 
-                state = np.zeros([1, ac_config.num_hidden * 2])
+        for i in range(num_batches):
+            x = dat[:, i * ac_config.eval_nseg_atonce * ac_config.segsize:(i + 1) * ac_config.eval_nseg_atonce * ac_config.segsize,:]
+            x = torch.Tensor(x).to(device)
 
-                dat, Nextra, prediction, num_batches = Hypnodensity.segment(
-                    dat, ac_config
-                )
-                for i in range(num_batches):
-                    x = dat[
-                        :,
-                        i
-                        * ac_config.eval_nseg_atonce
-                        * ac_config.segsize : (i + 1)
-                        * ac_config.eval_nseg_atonce
-                        * ac_config.segsize,
-                        :,
-                    ]
+            est, _ = m(x, torch.ones(ac_config.eval_nseg_atonce * ac_config.segsize, 5).to(device),
+                    torch.ones(ac_config.eval_nseg_atonce * ac_config.segsize).to(device),
+                    torch.ones(1).to(device), state)
 
-                    est, _ = session.run(
-                        [m.logits, m.final_state],
-                        feed_dict={
-                            m.features: x,
-                            m.targets: np.ones(
-                                [ac_config.eval_nseg_atonce * ac_config.segsize, 5]
-                            ),
-                            m.mask: np.ones(
-                                ac_config.eval_nseg_atonce * ac_config.segsize
-                            ),
-                            m.batch_size: np.ones([1]),
-                            m.initial_state: state,
-                        },
-                    )
+            prediction[i * ac_config.eval_nseg_atonce:(i + 1) * ac_config.eval_nseg_atonce, :] = est.cpu().detach().numpy()
 
-                    prediction[
-                        i
-                        * ac_config.eval_nseg_atonce : (i + 1)
-                        * ac_config.eval_nseg_atonce,
-                        :,
-                    ] = est
+        prediction = prediction[:-int(Nextra / ac_config.segsize), :]
 
-                prediction = prediction[: -int(Nextra / ac_config.segsize), :]
-
-                return prediction
-
-    # def run(dat, ac_config):
-    #     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    #     m = SCModel(ac_config).to(device)
-    #     s = torch.load(ac_config.hypnodensity_model_dir)
-
-    #     state = torch.zeros(1, ac_config.num_hidden * 2).to(device)
-
-    #     dat, Nextra, prediction, num_batches = Hypnodensity.segment(dat, ac_config)
-
-    #     for i in range(num_batches):
-    #         x = dat[:, i * ac_config.eval_nseg_atonce * ac_config.segsize:(i + 1) * ac_config.eval_nseg_atonce * ac_config.segsize,:]
-    #         x = torch.Tensor(x).to(device)
-
-    #         est, _ = m(x, torch.ones(ac_config.eval_nseg_atonce * ac_config.segsize, 5).to(device),
-    #                 torch.ones(ac_config.eval_nseg_atonce * ac_config.segsize).to(device),
-    #                 torch.ones(1).to(device), state)
-
-    #         prediction[i * ac_config.eval_nseg_atonce:(i + 1) * ac_config.eval_nseg_atonce, :] = est.cpu().detach().numpy()
-
-    #     prediction = prediction[:-int(Nextra / ac_config.segsize), :]
-
-    #     return prediction
+        return prediction
 
 
 class HypnodensityFeatures(object):  # <-- extract_features

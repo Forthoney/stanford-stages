@@ -16,8 +16,6 @@ warnings.simplefilter('ignore', FutureWarning)  # warnings.filterwarnings("ignor
 # for getting predictions
 import scipy.io as sio
 
-# import tensorflow as tf
-# import gpflow as gpf
 import torch
 
 import random
@@ -28,9 +26,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Polygon
 
-from inf_hypnodensity import \
+from hypnodensity import \
     Hypnodensity  # from inf_extract_features import ExtractFeatures --> moved to inf_hypnodensity.py
-from inf_config import AppConfig  # for AppConfig() <-- narco_biomarker(), [previously]
+from config import AppConfig  # for AppConfig() <-- narco_biomarker(), [previously]
 
 DEBUG_MODE = False
 STANDARD_EPOCH_SEC = 30
@@ -243,11 +241,6 @@ class NarcoApp(object):
                     model = torch.load(os.path.join(gpmodels_base_path, gpmodel, gpmodel + '_fold{:02}.gpm'.format(k + 1)))
                     model.eval()
                     mean_pred[:, idx, k:k+1], var_pred[:, idx, k:k+1] = model(X)
-                # with tf.Graph().as_default() as graph:
-                #     with tf.Session():
-                #         m = gpf.saver.Saver().load(
-                #             os.path.join(gpmodels_base_path, gpmodel, gpmodel + '_fold{:02}.gpm'.format(k + 1)))
-                #         mean_pred[:, idx, k, np.newaxis], var_pred[:, idx, k, np.newaxis] = m.predict_y(X)
 
         self.narcolepsy_probability = np.sum(np.multiply(np.mean(mean_pred, axis=2), scales), axis=1) / np.sum(scales)
         return self.narcolepsy_probability
